@@ -1,0 +1,6 @@
+{
+  "name": "Nashik Wanderlust - Travel & Heritage Guide",
+  "description": "An editorial travel blog exploring 10 iconic visiting spots in Nashik: ancient jyotirlingas, lush vineyards, Sahyadri fort treks, and rock-cut caves.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
