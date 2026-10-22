@@ -1,4 +1,28 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  KeywordItem, ClusterInfo, WaterfallContentPlanArticle, 
+  ArticleFormat, WaterfallCluster 
+} from './types/seo';
+import { 
+  INITIAL_WATERFALL_KEYWORDS, 
+  WATERFALL_CLUSTERS, 
+  NASHIK_WATERFALL_CONTENT_PLAN 
+} from './data/nashikWaterfallsData';
+
+// SEO Research Views
+import { Sidebar, NavSection } from './components/Sidebar';
+import { DashboardView } from './components/DashboardView';
+import { KeywordResearchView } from './components/KeywordResearchView';
+import { KeywordClustersView } from './components/KeywordClustersView';
+import { AiContentGeneratorView } from './components/AiContentGeneratorView';
+import { ContentCalendarView } from './components/ContentCalendarView';
+import { CompetitorResearchView } from './components/CompetitorResearchView';
+import { SavedKeywordsView } from './components/SavedKeywordsView';
+import { ExportReportsView } from './components/ExportReportsView';
+import { SettingsView } from './components/SettingsView';
+import { ScreenshotOcrModal } from './components/ScreenshotOcrModal';
+
+// Live Travel Blog Components (10 Visiting Spots in Nashik)
 import { ARTICLES, CATEGORIES } from './data/articles';
 import { Article, Category } from './types/blog';
 import { Navbar } from './components/Navbar';
@@ -9,16 +33,131 @@ import { BookmarksDrawer } from './components/BookmarksDrawer';
 import { TravelPlannerModal } from './components/TravelPlannerModal';
 import { QuickGuideSection } from './components/QuickGuideSection';
 import { Footer } from './components/Footer';
-import { Search, SlidersHorizontal, MapPin, Compass, ArrowUpDown } from 'lucide-react';
+
+import { 
+  Menu, Sparkles, BookOpen, Search, Compass, 
+  Layers, ExternalLink, ArrowLeft, ArrowRight, Check, Waves 
+} from 'lucide-react';
 
 export default function App() {
+  // App Mode: SEO Assistant vs Live Blog Preview
+  const [appMode, setAppMode] = useState<'assistant' | 'live-blog'>('assistant');
+
+  // Navigation State
+  const [activeSection, setActiveSection] = useState<NavSection>('dashboard');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [activeCampaignTopic, setActiveCampaignTopic] = useState('Waterfalls Near Nashik');
+
+  // Modal State
+  const [ocrModalOpen, setOcrModalOpen] = useState(false);
+
+  // Cross-view presets (e.g. clicking "Write Article" from Calendar or Table)
+  const [generatorPreset, setGeneratorPreset] = useState<{
+    topic: string;
+    keyword: string;
+    format: ArticleFormat;
+  }>({
+    topic: 'Best Waterfalls Near Nashik: A Complete Travel Guide',
+    keyword: 'Waterfall near Nashik',
+    format: 'Complete destination guide',
+  });
+
+  const [clusterFilterPreset, setClusterFilterPreset] = useState<string>('All');
+
+  // API Key Health Status
+  const [hasApiKey, setHasApiKey] = useState(false);
+
+  // Keywords State in LocalStorage with fallback to initial dataset
+  const [keywords, setKeywords] = useState<KeywordItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('nashik_wanderlust_keywords');
+      return saved ? JSON.parse(saved) : INITIAL_WATERFALL_KEYWORDS;
+    } catch {
+      return INITIAL_WATERFALL_KEYWORDS;
+    }
+  });
+
+  // Sync Keywords to LocalStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('nashik_wanderlust_keywords', JSON.stringify(keywords));
+    } catch {
+      // storage error fallback
+    }
+  }, [keywords]);
+
+  // Check Backend Health
+  useEffect(() => {
+    fetch('/api/health')
+      .then(res => res.json())
+      .then(data => {
+        if (data.hasApiKey) setHasApiKey(true);
+      })
+      .catch(() => setHasApiKey(false));
+  }, []);
+
+  // Saved keywords count
+  const savedCount = useMemo(() => keywords.filter(k => k.isBookmarked).length, [keywords]);
+
+  // Keyword Handlers
+  const handleToggleBookmark = (id: string) => {
+    setKeywords(prev => prev.map(k => 
+      k.id === id ? { ...k, isBookmarked: !k.isBookmarked } : k
+    ));
+  };
+
+  const handleClearAllBookmarks = () => {
+    setKeywords(prev => prev.map(k => ({ ...k, isBookmarked: false })));
+  };
+
+  const handleUpdateKeyword = (updated: KeywordItem) => {
+    setKeywords(prev => prev.map(k => k.id === updated.id ? updated : k));
+  };
+
+  const handleAddKeyword = (newKw: KeywordItem) => {
+    setKeywords(prev => [newKw, ...prev]);
+  };
+
+  const handleDeleteKeyword = (id: string) => {
+    setKeywords(prev => prev.filter(k => k.id !== id));
+  };
+
+  const handleImportOcrKeywords = (newKeywords: KeywordItem[]) => {
+    setKeywords(prev => {
+      const existingPhrases = new Set(prev.map(p => p.phrase.toLowerCase()));
+      const filteredNew = newKeywords.filter(n => !existingPhrases.has(n.phrase.toLowerCase()));
+      return [...filteredNew, ...prev];
+    });
+    setActiveSection('keyword-research');
+  };
+
+  // Navigations from sub-views
+  const handleLaunchArticleGeneration = (topic: string, primaryKw: string, format?: ArticleFormat) => {
+    setGeneratorPreset({
+      topic,
+      keyword: primaryKw,
+      format: format || 'Complete destination guide',
+    });
+    setActiveSection('content-generator');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleSelectClusterFromView = (clusterName: string) => {
+    setClusterFilterPreset(clusterName);
+    setActiveSection('keyword-research');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // -------------------------------------------------------------
+  // Live Blog Mode State & Handlers (The 10 Visiting Spots Blog)
+  // -------------------------------------------------------------
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [activeCategory, setActiveCategory] = useState<Category>('All');
-  const [searchQuery, setSearchQuery] = useState<string>('');
-  const [sortBy, setSortBy] = useState<'default' | 'readTime' | 'distance'>('default');
-
-  // Bookmarks State in localStorage
-  const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(() => {
+  const [blogSearchQuery, setBlogSearchQuery] = useState<string>('');
+  const [blogSortBy, setBlogSortBy] = useState<'default' | 'readTime' | 'distance'>('default');
+  const [blogBookmarksDrawerOpen, setBlogBookmarksDrawerOpen] = useState(false);
+  const [itinerariesModalOpen, setItinerariesModalOpen] = useState(false);
+  const [blogBookmarkedIds, setBlogBookmarkedIds] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('nashik_saved_articles');
       return saved ? JSON.parse(saved) : [];
@@ -27,345 +166,393 @@ export default function App() {
     }
   });
 
-  const [bookmarksDrawerOpen, setBookmarksDrawerOpen] = useState(false);
-  const [itinerariesModalOpen, setItinerariesModalOpen] = useState(false);
-
-  // Sync Bookmarks to LocalStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem('nashik_saved_articles', JSON.stringify(bookmarkedIds));
-    } catch {
-      // storage error fallback
-    }
-  }, [bookmarkedIds]);
-
-  // Handle URL hash routing (e.g., #sula-vineyards)
-  useEffect(() => {
-    const handleHashChange = () => {
-      const hash = window.location.hash.replace('#', '');
-      if (hash) {
-        const found = ARTICLES.find(a => a.id === hash || a.slug === hash);
-        if (found) {
-          setSelectedArticle(found);
-          window.scrollTo({ top: 0, behavior: 'instant' });
-        }
-      } else {
-        setSelectedArticle(null);
-      }
-    };
-
-    handleHashChange();
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
-
-  const handleSelectArticle = (article: Article) => {
-    setSelectedArticle(article);
-    window.location.hash = article.id;
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleBackToHome = () => {
-    setSelectedArticle(null);
-    window.location.hash = '';
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleToggleBookmark = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setBookmarkedIds(prev => 
-      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
-    );
-  };
-
-  const handleClearAllBookmarks = () => {
-    setBookmarkedIds([]);
-  };
-
-  // Filter & Sort Articles
-  const filteredArticles = useMemo(() => {
+  const filteredBlogArticles = useMemo(() => {
     let result = ARTICLES.filter((art) => {
-      // Category filter
       const matchesCategory = activeCategory === 'All' || art.category === activeCategory;
       if (!matchesCategory) return false;
-
-      // Search query filter (title, subtitle, excerpt, tags, highlights)
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
+      if (blogSearchQuery.trim()) {
+        const q = blogSearchQuery.toLowerCase().trim();
         const matchesTitle = art.title.toLowerCase().includes(q);
         const matchesSub = art.subtitle.toLowerCase().includes(q);
         const matchesExcerpt = art.excerpt.toLowerCase().includes(q);
-        const matchesTags = art.tags.some(t => t.toLowerCase().includes(q));
-        const matchesHighlights = art.highlights.some(h => h.toLowerCase().includes(q));
-        return matchesTitle || matchesSub || matchesExcerpt || matchesTags || matchesHighlights;
+        return matchesTitle || matchesSub || matchesExcerpt;
       }
-
       return true;
     });
 
-    if (sortBy === 'readTime') {
-      result = [...result].sort((a, b) => {
-        const minA = parseInt(a.readTime);
-        const minB = parseInt(b.readTime);
-        return minA - minB;
-      });
-    } else if (sortBy === 'distance') {
-      result = [...result].sort((a, b) => {
-        const distA = parseFloat(a.practicalInfo.distanceFromCBS);
-        const distB = parseFloat(b.practicalInfo.distanceFromCBS);
+    if (blogSortBy === 'readTime') {
+      result.sort((a, b) => parseInt(a.readTime, 10) - parseInt(b.readTime, 10));
+    } else if (blogSortBy === 'distance') {
+      result.sort((a, b) => {
+        const distA = parseFloat(a.practicalInfo.distanceFromCBS) || 0;
+        const distB = parseFloat(b.practicalInfo.distanceFromCBS) || 0;
         return distA - distB;
       });
     }
 
     return result;
-  }, [activeCategory, searchQuery, sortBy]);
+  }, [activeCategory, blogSearchQuery, blogSortBy]);
 
-  // Featured article for the hero
-  const featuredArticle = ARTICLES[0]; // Trimbakeshwar Shiva Temple
-
-  // Bookmarked articles list
-  const bookmarkedArticles = ARTICLES.filter(a => bookmarkedIds.includes(a.id));
-
-  // Category counts
-  const categoryCounts = useMemo(() => {
-    const counts: Record<string, number> = { All: ARTICLES.length };
-    ARTICLES.forEach((a) => {
-      counts[a.category] = (counts[a.category] || 0) + 1;
-    });
-    return counts;
-  }, []);
+  const handleToggleBlogBookmark = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setBlogBookmarkedIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
 
   return (
-    <div className="min-h-screen bg-stone-50 text-stone-900 flex flex-col font-sans selection:bg-amber-100 selection:text-amber-900">
+    <div className="min-h-screen bg-[#faf8f5] text-[#262626] font-sans selection:bg-amber-100 selection:text-amber-900 flex flex-col">
       
-      {/* Global Navbar */}
-      <Navbar
-        activeCategory={activeCategory}
-        onSelectCategory={setActiveCategory}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        bookmarkCount={bookmarkedIds.length}
-        onOpenBookmarks={() => setBookmarksDrawerOpen(true)}
-        onOpenItineraries={() => setItinerariesModalOpen(true)}
-        onGoHome={handleBackToHome}
-        isArticleOpen={selectedArticle !== null}
-      />
+      {/* -------------------------------------------------------------
+          Top Global Mode Switcher Banner
+          ------------------------------------------------------------- */}
+      <div className="bg-[#11241a] text-[#f7f5ef] border-b border-[#244b38] px-4 py-2 flex items-center justify-between text-xs sticky top-0 z-40 backdrop-blur-md">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5 font-bold tracking-tight">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-white">Nashik Wanderlust</span>
+            <span className="text-emerald-300/80 font-normal hidden sm:inline">• The Heritage, Treks &amp; Wine Country Travel Blog</span>
+          </div>
+          <span className="text-stone-500 hidden md:inline">|</span>
+          <span className="text-[11px] text-amber-300 font-medium hidden md:flex items-center gap-1">
+            <Waves className="w-3 h-3 text-amber-400" /> Active Topic: Waterfalls Near Nashik (Ubersuggest Dataset)
+          </span>
+        </div>
 
-      {/* Conditionally Render Standalone Article Page or Homepage */}
-      {selectedArticle ? (
-        <ArticleView
-          article={selectedArticle}
-          allArticles={ARTICLES}
-          onBack={handleBackToHome}
-          onSelectArticle={handleSelectArticle}
-          isBookmarked={bookmarkedIds.includes(selectedArticle.id)}
-          onToggleBookmark={handleToggleBookmark}
-        />
-      ) : (
-        <main className="flex-1">
-          {/* Featured Article Hero Section */}
-          <HeroFeatured
-            article={featuredArticle}
-            onReadArticle={handleSelectArticle}
-            onExploreAll={() => {
-              const el = document.getElementById('articles-section');
-              if (el) el.scrollIntoView({ behavior: 'smooth' });
+        <div className="flex items-center gap-2">
+          {appMode === 'assistant' ? (
+            <button
+              onClick={() => {
+                setAppMode('live-blog');
+                window.scrollTo({ top: 0, behavior: 'instant' });
+              }}
+              className="px-3 py-1 rounded-lg bg-[#1c3c2d] hover:bg-[#285741] text-amber-300 border border-amber-500/30 font-semibold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+              <span>Preview Live Blog (10 Spots)</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                setAppMode('assistant');
+                window.scrollTo({ top: 0, behavior: 'instant' });
+              }}
+              className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-[11px] flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to SEO Assistant</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* -------------------------------------------------------------
+          MODE 1: AI-Powered SEO Research Assistant
+          ------------------------------------------------------------- */}
+      {appMode === 'assistant' && (
+        <div className="flex flex-1">
+          
+          {/* Left Fixed Navigation Sidebar */}
+          <Sidebar
+            activeSection={activeSection}
+            onSelectSection={(sec) => {
+              setActiveSection(sec);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
             }}
+            savedCount={savedCount}
+            mobileOpen={mobileMenuOpen}
+            onToggleMobile={() => setMobileMenuOpen(!mobileMenuOpen)}
+            hasApiKey={hasApiKey}
+            activeTopic={activeCampaignTopic}
+            onSelectTopic={(t) => setActiveCampaignTopic(t)}
           />
 
-          {/* Main 10 Articles Section */}
-          <section id="articles-section" className="py-16 sm:py-20 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Main Working Canvas */}
+          <main className="flex-1 lg:pl-72 flex flex-col min-h-screen">
             
-            {/* Section Header with Category Tabs */}
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8 pb-6 border-b border-stone-200">
-              <div>
-                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-700 mb-1">
-                  <Compass className="w-4 h-4" />
-                  <span>The Complete Destination Directory</span>
-                </div>
-                <h2 className="font-editorial text-3xl sm:text-4xl font-bold text-stone-900">
-                  Explore All 10 Visiting Spots
-                </h2>
-                <p className="text-stone-600 text-sm mt-1">
-                  Each destination includes historical insights, photography, visitor timings, and local food tips.
-                </p>
-              </div>
-
-              {/* Sorting Control */}
-              <div className="flex items-center gap-2 text-xs text-stone-600 self-start md:self-auto">
-                <ArrowUpDown className="w-3.5 h-3.5 text-stone-400" />
-                <span className="font-medium">Sort by:</span>
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                  className="bg-white border border-stone-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-stone-800 focus:outline-none focus:border-amber-600 cursor-pointer shadow-xs"
-                >
-                  <option value="default">Default Order (#1 - #10)</option>
-                  <option value="readTime">Shortest Read Time</option>
-                  <option value="distance">Distance from Central Nashik</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Category Filter Pills */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-8 scrollbar-none">
-              <span className="text-xs font-bold text-stone-400 uppercase tracking-wider mr-1 flex items-center gap-1 shrink-0">
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-                Filter:
-              </span>
-              {CATEGORIES.map((cat) => {
-                const count = categoryCounts[cat] || 0;
-                const isActive = activeCategory === cat;
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => {
-                      setActiveCategory(cat as Category);
-                    }}
-                    className={`px-4 py-2 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 cursor-pointer ${
-                      isActive
-                        ? 'bg-amber-600 text-white shadow-md shadow-amber-900/20'
-                        : 'bg-white text-stone-700 hover:bg-stone-200 border border-stone-200'
-                    }`}
-                  >
-                    <span>{cat}</span>
-                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                      isActive ? 'bg-amber-700/80 text-amber-100' : 'bg-stone-100 text-stone-500'
-                    }`}>
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Search feedback indicator if query active */}
-            {searchQuery && (
-              <div className="mb-6 p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 flex items-center justify-between">
-                <span>
-                  Showing results for "<strong>{searchQuery}</strong>" ({filteredArticles.length} matching spots found)
-                </span>
+            {/* Top Workspace Header Bar */}
+            <header className="sticky top-9 z-30 bg-[#faf8f5]/90 backdrop-blur-md border-b border-stone-200 px-4 sm:px-8 py-3.5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
                 <button
-                  onClick={() => setSearchQuery('')}
-                  className="text-amber-800 font-bold hover:underline"
+                  onClick={() => setMobileMenuOpen(true)}
+                  className="lg:hidden p-2 rounded-xl border border-stone-200 bg-white text-stone-700 hover:bg-stone-100"
                 >
-                  Clear search
+                  <Menu className="w-5 h-5" />
                 </button>
-              </div>
-            )}
-
-            {/* 10 Articles Cards Grid */}
-            {filteredArticles.length === 0 ? (
-              <div className="text-center py-20 bg-white rounded-3xl border border-stone-200 p-8 space-y-3">
-                <Search className="w-12 h-12 text-stone-300 mx-auto" />
-                <h3 className="font-editorial text-xl font-bold text-stone-800">
-                  No spots match your search
-                </h3>
-                <p className="text-xs text-stone-500 max-w-sm mx-auto">
-                  Try searching for another keyword like "Shiva", "Wine", "Trek", "Ghats", or "Caves".
-                </p>
-                <button
-                  onClick={() => {
-                    setSearchQuery('');
-                    setActiveCategory('All');
-                  }}
-                  className="px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-bold hover:bg-amber-700 transition-colors"
-                >
-                  Reset all filters
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {filteredArticles.map((article, index) => (
-                  <ArticleCard
-                    key={article.id}
-                    article={article}
-                    index={index}
-                    isBookmarked={bookmarkedIds.includes(article.id)}
-                    onToggleBookmark={handleToggleBookmark}
-                    onReadArticle={handleSelectArticle}
-                  />
-                ))}
-              </div>
-            )}
-
-          </section>
-
-          {/* Quick Distance & Location Matrix Overview */}
-          <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-16">
-            <div className="bg-gradient-to-r from-stone-900 to-stone-950 text-white rounded-3xl p-6 sm:p-8 lg:p-10 border border-stone-800 shadow-xl">
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 mb-8">
                 <div>
-                  <span className="text-xs font-bold uppercase tracking-widest text-amber-400 block mb-1">
-                    Route & Distance Reference Matrix
-                  </span>
-                  <h3 className="font-editorial text-2xl sm:text-3xl font-bold text-white">
-                    Distance from Nashik Central (CBS)
-                  </h3>
-                  <p className="text-xs sm:text-sm text-stone-400 mt-1">
-                    Quickly check driving times and plan sequential stops across the region.
+                  <h2 className="font-editorial text-lg font-bold text-stone-900 capitalize tracking-tight">
+                    {activeSection.replace('-', ' ')}
+                  </h2>
+                  <p className="text-[11px] text-stone-500 hidden sm:block">
+                    Campaign: <strong>{activeCampaignTopic}</strong> • 14 research keywords loaded
                   </p>
                 </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setOcrModalOpen(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-900 border border-amber-300 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                  <span className="hidden sm:inline">OCR Screenshot</span>
+                </button>
 
                 <button
-                  onClick={() => setItinerariesModalOpen(true)}
-                  className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-stone-950 font-bold text-xs sm:text-sm rounded-xl transition-colors shrink-0 self-start lg:self-auto cursor-pointer"
+                  onClick={() => handleLaunchArticleGeneration('Best Waterfalls Near Nashik: A Complete Travel Guide', 'Waterfall near Nashik')}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#152e22] hover:bg-[#1c3c2d] text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                 >
-                  View 1-Day to 3-Day Itineraries
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>Write Article</span>
                 </button>
               </div>
+            </header>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                {ARTICLES.map((art, idx) => (
-                  <div
-                    key={art.id}
-                    onClick={() => handleSelectArticle(art)}
-                    className="p-3 bg-stone-900/80 hover:bg-stone-800 border border-stone-800 hover:border-amber-400/50 rounded-xl transition-all cursor-pointer group"
-                  >
-                    <div className="flex items-center justify-between text-[11px] text-amber-400 font-bold mb-1">
-                      <span>#{idx + 1}</span>
-                      <MapPin className="w-3 h-3 text-amber-400" />
-                    </div>
-                    <span className="text-xs font-semibold text-stone-200 group-hover:text-amber-300 block truncate">
-                      {art.title.split(':')[0]}
-                    </span>
-                    <span className="text-[11px] text-stone-400 block mt-1">
-                      {art.practicalInfo.distanceFromCBS}
-                    </span>
-                  </div>
-                ))}
-              </div>
+            {/* View Container */}
+            <div className="p-4 sm:p-8 max-w-7xl w-full mx-auto flex-1">
+              {activeSection === 'dashboard' && (
+                <DashboardView
+                  keywords={keywords}
+                  clusters={WATERFALL_CLUSTERS}
+                  contentPlan={NASHIK_WATERFALL_CONTENT_PLAN}
+                  savedCount={savedCount}
+                  onNavigate={(sec) => setActiveSection(sec)}
+                  onOpenOcrModal={() => setOcrModalOpen(true)}
+                  onSelectCluster={handleSelectClusterFromView}
+                  onStartArticleGeneration={handleLaunchArticleGeneration}
+                />
+              )}
+
+              {activeSection === 'keyword-research' && (
+                <KeywordResearchView
+                  keywords={keywords}
+                  onToggleBookmark={handleToggleBookmark}
+                  onUpdateKeyword={handleUpdateKeyword}
+                  onAddKeyword={handleAddKeyword}
+                  onDeleteKeyword={handleDeleteKeyword}
+                  onOpenOcrModal={() => setOcrModalOpen(true)}
+                  onGenerateArticle={handleLaunchArticleGeneration}
+                  initialClusterFilter={clusterFilterPreset}
+                />
+              )}
+
+              {activeSection === 'clusters' && (
+                <KeywordClustersView
+                  clusters={WATERFALL_CLUSTERS}
+                  onFilterByCluster={handleSelectClusterFromView}
+                  onGenerateArticleForCluster={handleLaunchArticleGeneration}
+                />
+              )}
+
+              {activeSection === 'content-generator' && (
+                <AiContentGeneratorView
+                  initialTopic={generatorPreset.topic}
+                  initialKeyword={generatorPreset.keyword}
+                  initialFormat={generatorPreset.format}
+                />
+              )}
+
+              {activeSection === 'content-calendar' && (
+                <ContentCalendarView
+                  onStartArticleGeneration={handleLaunchArticleGeneration}
+                />
+              )}
+
+              {activeSection === 'competitor-research' && (
+                <CompetitorResearchView />
+              )}
+
+              {activeSection === 'saved-keywords' && (
+                <SavedKeywordsView
+                  keywords={keywords}
+                  onToggleBookmark={handleToggleBookmark}
+                  onClearAllBookmarks={handleClearAllBookmarks}
+                  onNavigateToResearch={() => setActiveSection('keyword-research')}
+                  onStartArticleGeneration={handleLaunchArticleGeneration}
+                />
+              )}
+
+              {activeSection === 'export-reports' && (
+                <ExportReportsView
+                  keywords={keywords}
+                  clusters={WATERFALL_CLUSTERS}
+                  contentPlan={NASHIK_WATERFALL_CONTENT_PLAN}
+                />
+              )}
+
+              {activeSection === 'settings' && (
+                <SettingsView
+                  activeTopic={activeCampaignTopic}
+                  onSelectTopic={(t) => setActiveCampaignTopic(t)}
+                  hasApiKey={hasApiKey}
+                />
+              )}
             </div>
-          </section>
 
-          {/* Nashik Travel Essentials Guide (Misal trail, best seasons, logistics) */}
-          <QuickGuideSection />
+            {/* Footer */}
+            <footer className="border-t border-stone-200 py-6 px-8 text-center text-xs text-stone-500 bg-white">
+              <p>
+                <strong>Nashik Wanderlust SEO Research Assistant</strong> • Powered by Gemini 3.8 Flash Vision &amp; Language Architecture • Designed for Maharashtra Travel Publishing
+              </p>
+            </footer>
 
-        </main>
+          </main>
+
+        </div>
       )}
 
-      {/* Bookmarks Slide-over Drawer */}
-      <BookmarksDrawer
-        isOpen={bookmarksDrawerOpen}
-        onClose={() => setBookmarksDrawerOpen(false)}
-        bookmarkedArticles={bookmarkedArticles}
-        onRemoveBookmark={(id) => setBookmarkedIds(prev => prev.filter(item => item !== id))}
-        onSelectArticle={handleSelectArticle}
-        onClearAll={handleClearAllBookmarks}
-      />
+      {/* -------------------------------------------------------------
+          MODE 2: Live Travel Blog (10 Visiting Spots in Nashik)
+          ------------------------------------------------------------- */}
+      {appMode === 'live-blog' && (
+        <div className="flex-1 flex flex-col">
+          <Navbar
+            activeCategory={activeCategory}
+            onSelectCategory={(cat) => setActiveCategory(cat)}
+            searchQuery={blogSearchQuery}
+            onSearchChange={(q) => setBlogSearchQuery(q)}
+            bookmarkCount={blogBookmarkedIds.length}
+            onOpenBookmarks={() => setBlogBookmarksDrawerOpen(true)}
+            onOpenItineraries={() => setItinerariesModalOpen(true)}
+            onGoHome={() => {
+              setSelectedArticle(null);
+              window.location.hash = '';
+            }}
+            isArticleOpen={Boolean(selectedArticle)}
+          />
 
-      {/* Curated Itineraries Modal */}
-      <TravelPlannerModal
-        isOpen={itinerariesModalOpen}
-        onClose={() => setItinerariesModalOpen(false)}
-        articles={ARTICLES}
-        onSelectArticle={handleSelectArticle}
-      />
+          <main className="flex-1">
+            {selectedArticle ? (
+              <ArticleView
+                article={selectedArticle}
+                allArticles={ARTICLES}
+                isBookmarked={blogBookmarkedIds.includes(selectedArticle.id)}
+                onToggleBookmark={(id, e) => handleToggleBlogBookmark(id, e)}
+                onBack={() => {
+                  setSelectedArticle(null);
+                  window.location.hash = '';
+                }}
+                onSelectArticle={(art) => {
+                  setSelectedArticle(art);
+                  window.location.hash = art.id;
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              />
+            ) : (
+              <>
+                <HeroFeatured
+                  article={ARTICLES[0]}
+                  onReadArticle={(art) => {
+                    setSelectedArticle(art);
+                    window.location.hash = art.id;
+                  }}
+                  onExploreAll={() => {
+                    const el = document.getElementById('explore');
+                    el?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                />
 
-      {/* Footer */}
-      <Footer
-        onSelectArticle={handleSelectArticle}
-        onOpenItineraries={() => setItinerariesModalOpen(true)}
+                <QuickGuideSection />
+
+                {/* Filter and Articles Grid */}
+                <section id="explore" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+                  <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8 pb-6 border-b border-stone-200">
+                    <div>
+                      <span className="text-amber-800 font-semibold text-xs tracking-wider uppercase">
+                        The Curated Guide
+                      </span>
+                      <h2 className="font-editorial text-3xl font-bold text-stone-900 mt-1">
+                        10 Iconic Visiting Spots
+                      </h2>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="relative">
+                        <Search className="w-4 h-4 absolute left-3 top-3 text-stone-400" />
+                        <input
+                          type="text"
+                          placeholder="Search temples, forts..."
+                          value={blogSearchQuery}
+                          onChange={(e) => setBlogSearchQuery(e.target.value)}
+                          className="pl-9 pr-3 py-2 text-xs rounded-xl border border-stone-200 bg-white focus:outline-none focus:border-emerald-700"
+                        />
+                      </div>
+
+                      <select
+                        value={activeCategory}
+                        onChange={(e) => setActiveCategory(e.target.value as Category)}
+                        className="px-3 py-2 text-xs rounded-xl border border-stone-200 bg-white text-stone-700"
+                      >
+                        {CATEGORIES.map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                    {filteredBlogArticles.map((article, idx) => (
+                      <ArticleCard
+                        key={article.id}
+                        article={article}
+                        index={idx}
+                        isBookmarked={blogBookmarkedIds.includes(article.id)}
+                        onToggleBookmark={(id, e) => handleToggleBlogBookmark(id, e)}
+                        onReadArticle={(art) => {
+                          setSelectedArticle(art);
+                          window.location.hash = art.id;
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                      />
+                    ))}
+                  </div>
+                </section>
+              </>
+            )}
+          </main>
+
+          <Footer 
+            onSelectArticle={(art) => {
+              setSelectedArticle(art);
+              window.location.hash = art.id;
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onOpenItineraries={() => setItinerariesModalOpen(true)}
+          />
+
+          <BookmarksDrawer
+            isOpen={blogBookmarksDrawerOpen}
+            onClose={() => setBlogBookmarksDrawerOpen(false)}
+            bookmarkedArticles={ARTICLES.filter(a => blogBookmarkedIds.includes(a.id))}
+            onSelectArticle={(art) => {
+              setSelectedArticle(art);
+              setBlogBookmarksDrawerOpen(false);
+              window.location.hash = art.id;
+            }}
+            onRemoveBookmark={(id) => handleToggleBlogBookmark(id)}
+            onClearAll={() => setBlogBookmarkedIds([])}
+          />
+
+          <TravelPlannerModal
+            isOpen={itinerariesModalOpen}
+            onClose={() => setItinerariesModalOpen(false)}
+            articles={ARTICLES}
+            onSelectArticle={(art) => {
+              setSelectedArticle(art);
+              setItinerariesModalOpen(false);
+              window.location.hash = art.id;
+            }}
+          />
+        </div>
+      )}
+
+      {/* -------------------------------------------------------------
+          Modal: Screenshot OCR Keyword Extractor (Gemini 3.8 Flash)
+          ------------------------------------------------------------- */}
+      <ScreenshotOcrModal
+        isOpen={ocrModalOpen}
+        onClose={() => setOcrModalOpen(false)}
+        onImportKeywords={handleImportOcrKeywords}
       />
 
     </div>
